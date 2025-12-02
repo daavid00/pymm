@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2022-2025 NORCE Research AS
 # SPDX-License-Identifier: GPL-3.0
-# pylint: disable=R0912,R0915,E1102
+# pylint: disable=R0912,R0915,E1102,E1123
 
 """Main script for pymm"""
 
@@ -173,15 +173,24 @@ def process_image(dic, in_image):
     axis.set_yticks([])
     fig.savefig(f"{dic['fol']}/binary_image.png", dpi=600)
     # Extract the contour of the grains on the image border and interior
-    dic["border"] = ps.filters.trim_small_clusters(
-        dic["im"], size=(dic["imH"] + 2 * dic["imL"]) * dic["ad_bord"]
-    )
+    if int(ps.__version__.split(".", maxsplit=1)[0]) > 2:
+        dic["border"] = ps.filters.trim_small_clusters(
+            dic["im"], min_size=(dic["imH"] + 2 * dic["imL"]) * dic["ad_bord"]
+        )
+        grains = ps.filters.trim_small_clusters(
+            np.logical_and(np.bitwise_not(dic["border"]), dic["im"]),
+            min_size=dic["grainsSize"],
+        )
+    else:
+        dic["border"] = ps.filters.trim_small_clusters(
+            dic["im"], size=(dic["imH"] + 2 * dic["imL"]) * dic["ad_bord"]
+        )
+        grains = ps.filters.trim_small_clusters(
+            np.logical_and(np.bitwise_not(dic["border"]), dic["im"]),
+            size=dic["grainsSize"],
+        )
     dic["cn_border"] = measure.find_contours(
         dic["border"], 0.5, fully_connected="high", positive_orientation="high"
-    )
-    grains = ps.filters.trim_small_clusters(
-        np.logical_and(np.bitwise_not(dic["border"]), dic["im"]),
-        size=dic["grainsSize"],
     )
     grains = grains[dic["ad_bord"] : -dic["ad_bord"], dic["ad_bord"] : -dic["ad_bord"]]
     dic["cn_grains"] = measure.find_contours(
