@@ -211,7 +211,7 @@ def make_figures(dic):
     lmax = 0
     for contour in dic["cn_border"]:
         contour = measure.approximate_polygon(contour, tolerance=dic["borderTol"])
-        peri = max(
+        peri = np.max(
             (contour[:, 0] - np.roll(contour[:, 0], 1)) ** 2
             + (contour[:, 1] - np.roll(contour[:, 1], 1)) ** 2
         )
@@ -278,10 +278,10 @@ def extract_borders(dic):
     """
     dic["pl"], dic["pb"], dic["pr"], dic["pt"] = [], [], [], []
     dic["aa"], dic["dd"], dic["cc"] = 0, 0, 0
-    dic["bb"] = min(dic["bnd"][:, 0])
-    dic["bl"] = min(dic["bnd"][:, 1])
-    dic["bt"] = max(dic["bnd"][:, 0])
-    dic["br"] = max(dic["bnd"][:, 1])
+    dic["bb"] = np.min(dic["bnd"][:, 0])
+    dic["bl"] = np.min(dic["bnd"][:, 1])
+    dic["bt"] = np.max(dic["bnd"][:, 0])
+    dic["br"] = np.max(dic["bnd"][:, 1])
     for i in range(len(dic["bnd"]) - 1):
         if dic["bnd"][-i - 1, 0] > dic["bb"] + 1 and dic["aa"] == 0:
             dic["pr"].append(
@@ -369,8 +369,8 @@ def boundary_tags_left_bottom(dic):
     dic["j"] = 0
     for _ in range(len(dic["pl"]) - 1):
         if (
-            abs(dic["bl"] - dic["ad_bord"] - dic["point"][dic["j"]][0]) < 1
-            and abs(dic["bl"] - dic["ad_bord"] - dic["point"][dic["j"] + 1][0]) < 1
+            np.abs(dic["bl"] - dic["ad_bord"] - dic["point"][dic["j"]][0]) < 1
+            and np.abs(dic["bl"] - dic["ad_bord"] - dic["point"][dic["j"] + 1][0]) < 1
         ):
             dic["bdnL"].append(dic["j"])
         else:
@@ -378,8 +378,8 @@ def boundary_tags_left_bottom(dic):
         dic["j"] += 1
     for _ in range(len(dic["pt"])):
         if (
-            abs(dic["bt"] - dic["ad_bord"] - dic["point"][dic["j"]][1]) < 1
-            and abs(dic["bt"] - dic["ad_bord"] - dic["point"][dic["j"] + 1][1]) < 1
+            np.abs(dic["bt"] - dic["ad_bord"] - dic["point"][dic["j"]][1]) < 1
+            and np.abs(dic["bt"] - dic["ad_bord"] - dic["point"][dic["j"] + 1][1]) < 1
         ):
             dic["bdnT"].append(dic["j"])
         else:
