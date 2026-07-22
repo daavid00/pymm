@@ -9,11 +9,11 @@
 <img src="docs/text/figs/pymm.gif" width="830" height="700">
 
 ## Main feature
-Creation of [_OpenFOAM_](https://www.openfoam.com) simulation models from given input images using [_Gmsh_](https://gmsh.info).
+Creation of [_OpenFOAM_](https://openfoam.org) simulation models from given input images using [_Gmsh_](https://gmsh.info).
 
 ## Installation
 You will first need to install
-* OpenFOAM (https://www.openfoam.com) (tested with OpenFOAM-13)
+* OpenFOAM (https://openfoam.org) (tested with OpenFOAM-14)
 * Gmsh (https://gmsh.info) (tested with Gmsh 4.15.2)
 
 To install the _pymm_ executable from the development version: 
@@ -43,7 +43,7 @@ pip install -e .
 pip install -r dev-requirements.txt
 ```
 
-See the [_OpenFOAM page_](https://openfoam.org/download/13-ubuntu/), where from OpenFOAM-12 the simulator is available via apt get, and OpenFOAM-13 is the latest release. 
+See the [_OpenFOAM page_](https://openfoam.org/download/14-ubuntu/), where from OpenFOAM-12 the simulator is available via apt get, and OpenFOAM-14 is the latest release. 
 
 ## Running pymm
 You can run _pymm_ as a single command line:
