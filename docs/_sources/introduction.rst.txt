@@ -12,7 +12,7 @@ Description
 The **pymm** tool relies on Python packages (e.g., `skimage <https://scikit-image.org>`_) to generate the spatial domains for the simulations from
 the microsystem images, and `Gmsh <https://gmsh.info>`_ as a mesh generator. 
 The numerical simulations for the water flow and tracer are performed using 
-the `OpenFOAM <https://www.openfoam.com>`_ simulator. This framework could be applied to general images and 
+the `OpenFOAM <https://openfoam.org>`_ simulator. This framework could be applied to general images and 
 the current implementation could be ('easily') extended to consider further 
 geometry of devices and solvers in OpenFOAM.
 

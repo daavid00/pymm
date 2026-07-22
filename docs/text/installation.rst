@@ -46,11 +46,11 @@ OpenFOAM
 --------
 
 See the `OpenFOAM page <https://openfoam.org/download/13-ubuntu/>`_, where from OpenFOAM-12 the simulator is available via apt get,
-and OpenFOAM-13 is the latest release. To test if OpenFoam is installed and working, you could type in the terminal:
+and OpenFOAM-14 is the latest release. To test if OpenFoam is installed and working, you could type in the terminal:
 
 .. code-block:: console
 
-    source /opt/openfoam13/etc/bashrc    
+    source /opt/openfoam14/etc/bashrc    
     foamRun -help
 
 Gmsh
@@ -62,4 +62,4 @@ See the `Gmsh page <https://gmsh.info/#Download>`_.
 .. tip::
 
     See the `CI.yml <https://github.com/cssr-tools/pymm/blob/main/.github/workflows/CI.yml>`_ script 
-    for installation of pymm, gmsh, and OpenFOAM-13 in Ubuntu using Python 3.14.
+    for installation of pymm, gmsh, and OpenFOAM-14 in Ubuntu using Python 3.14.
