@@ -45,7 +45,7 @@ install the Python requirements in a virtual environment with the following comm
 OpenFOAM
 --------
 
-See the `OpenFOAM page <https://openfoam.org/download/13-ubuntu/>`_, where from OpenFOAM-12 the simulator is available via apt get,
+See the `OpenFOAM page <https://openfoam.org/download/14-ubuntu/>`_, where from OpenFOAM-12 the simulator is available via apt get,
 and OpenFOAM-14 is the latest release. To test if OpenFoam is installed and working, you could type in the terminal:
 
 .. code-block:: console
@@ -62,4 +62,4 @@ See the `Gmsh page <https://gmsh.info/#Download>`_.
 .. tip::
 
     See the `CI.yml <https://github.com/cssr-tools/pymm/blob/main/.github/workflows/CI.yml>`_ script 
-    for installation of pymm, gmsh, and OpenFOAM-14 in Ubuntu using Python 3.14.
+    for installation of pymm, gmsh, and OpenFOAM-14 in Ubuntu 26.04 using Python 3.14.

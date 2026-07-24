@@ -5,24 +5,25 @@
 """Main script for pymm"""
 
 import argparse
-import sys
-import subprocess
 import shutil
-from pathlib import Path
-from dataclasses import dataclass
-from contextlib import nullcontext
+import subprocess
+import sys
 import tomllib
+from contextlib import nullcontext
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
-import numpy as np
-from numpy.typing import NDArray
-import skimage.transform
-from skimage import io, measure
-from skimage.morphology import remove_small_objects
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
+import numpy as np
+import skimage.transform
 from alive_progress import alive_bar
 from mako.template import Template
+from matplotlib.collections import LineCollection
+from numpy.typing import NDArray
+from skimage import io, measure
+from skimage.morphology import remove_small_objects
 
 ADD_BORDER = 50  # Add arbitrary border to extract the image boundaries
 

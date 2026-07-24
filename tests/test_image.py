@@ -3,8 +3,9 @@
 
 """Test the image mode functionality"""
 
-from pathlib import Path
 import shutil
+from pathlib import Path
+
 from pymm.core.pymm import main
 
 
