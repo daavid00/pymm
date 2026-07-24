@@ -3,8 +3,8 @@
 
 """Test the device mode functionality"""
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 
 def test_device(tmp_path, monkeypatch):
