@@ -3,17 +3,17 @@
 
 """Test in a single grain"""
 
-import subprocess
 from pathlib import Path
+
+from pymm.core.pymm import main
 
 
 def test_single_grain(tmp_path, monkeypatch):
     """See configs/whiteish_grains.toml"""
     repo_root = Path(__file__).parents[1]
     monkeypatch.chdir(tmp_path)
-    subprocess.run(
+    main(
         [
-            "pymm",
             "-p",
             f"{repo_root}/tests//configs/single_grain.toml",
             "-i",
@@ -24,8 +24,7 @@ def test_single_grain(tmp_path, monkeypatch):
             ".",
             "-m",
             "image",
-        ],
-        check=True,
+        ]
     )
     mesh = tmp_path / "mesh.msh"
     assert mesh.is_file()
@@ -40,9 +39,8 @@ def test_single_grain(tmp_path, monkeypatch):
     assert num_lines > 15000
     assert num_nodes > 4000
     assert num_elements > 10000
-    subprocess.run(
+    main(
         [
-            "pymm",
             "-i",
             f"{repo_root}/tests/configs/single_grain.png",
             "-p",
@@ -53,8 +51,7 @@ def test_single_grain(tmp_path, monkeypatch):
             "image",
             "-o",
             ".",
-        ],
-        check=True,
+        ]
     )
     last_vtk = tmp_path / "VTK_tracerTransport" / "tracerTransport_3.vtk"
     assert last_vtk.is_file()
