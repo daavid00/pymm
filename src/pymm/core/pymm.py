@@ -5,6 +5,7 @@
 """Main script for pymm"""
 
 import argparse
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,71 +57,19 @@ class PymmConfig:
     tracerStep: float
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Python for microsystems"""
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description="Main script to run the workflow on a microsystem configuration.",
-    )
-    parser.add_argument(
-        "-i",
-        "--image",
-        type=str.strip,
-        default="microsystem.png",
-        help="The base name of the image",
-    )
-    parser.add_argument(
-        "-p",
-        "--parameters",
-        type=str.strip,
-        default="parameters.toml",
-        help="The base name of the parameter file",
-    )
-    parser.add_argument(
-        "-m",
-        "--mode",
-        type=str.strip,
-        choices=["image", "device"],
-        default="image",
-        help="The setup configuration of the microsystem",
-    )
-    parser.add_argument(
-        "-t",
-        "--type",
-        type=str.strip,
-        choices=["pngs", "mesh", "flow", "mesh_flow", "flow_tracer", "tracer", "all"],
-        default="mesh",
-        help="Run the whole framework ('all'), only the generation of the PNG figures "
-        "with the segmentation to grains, voids, and boundary ('pngs'), the mesh files "
-        "for Gmsh ('mesh'), keep the current mesh and only simulate the flow velocity "
-        "field ('flow'), mesh and flow ('mesh_flow'), flow and tracer ('flow_tracer'), "
-        "or only tracer simulations ('tracer')",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str.strip,
-        default="output",
-        help="The base name of the output folder",
-    )
-    parser.add_argument(
-        "-g",
-        "--gmsh",
-        type=str.strip,
-        default="gmsh",
-        help="The full path to the gmsh executable or simple Gmsh if it runs from the "
-        "terminal",
-    )
+    cmdargs = parse_args(argv)
+    check_cmdargs(cmdargs)
     pat = Path(__file__).resolve().parent.parent
-    cmdargs = vars(parser.parse_known_args()[0])
-    fol = Path(cmdargs["output"].strip()).resolve()
-    gmsh = cmdargs["gmsh"]
-    mode = cmdargs["mode"]
-    kind = cmdargs["type"]
-    image_path = cmdargs["image"]
-    parameters_path = Path(cmdargs["parameters"])
+    fol = Path(cmdargs.output).resolve()
+    gmsh = cmdargs.gmsh
+    mode = cmdargs.mode
+    kind = cmdargs.type
+    image_path = cmdargs.image
+    parameters_path = Path(cmdargs.parameters)
     if not parameters_path.exists():
-        print(f"The file {cmdargs['parameters']} is not found.")
+        print(f"The file {cmdargs.parameters} is not found.")
         sys.exit()
     if parameters_path.suffix == ".txt":
         print("toml is used now for the parameter file; please update the file.")
@@ -187,6 +136,169 @@ def main() -> None:
         "\nThe execution of pymm succeeded. "
         + f"The generated files have been written to {fol}\n"
     )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Define and parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Main script to run the workflow on a microsystem configuration.",
+    )
+    parser.add_argument(
+        "-i",
+        "--image",
+        type=str.strip,
+        default="microsystem.png",
+        help="The base name of the image",
+    )
+    parser.add_argument(
+        "-p",
+        "--parameters",
+        type=str.strip,
+        default="parameters.toml",
+        help="The base name of the parameter file",
+    )
+    parser.add_argument(
+        "-m",
+        "--mode",
+        type=str.strip,
+        choices=["image", "device"],
+        default="image",
+        help="The setup configuration of the microsystem",
+    )
+    parser.add_argument(
+        "-t",
+        "--type",
+        type=str.strip,
+        choices=["pngs", "mesh", "flow", "mesh_flow", "flow_tracer", "tracer", "all"],
+        default="mesh",
+        help="Run the whole framework ('all'), only the generation of the PNG figures "
+        "with the segmentation to grains, voids, and boundary ('pngs'), the mesh files "
+        "for Gmsh ('mesh'), keep the current mesh and only simulate the flow velocity "
+        "field ('flow'), mesh and flow ('mesh_flow'), flow and tracer ('flow_tracer'), "
+        "or only tracer simulations ('tracer')",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str.strip,
+        default="output",
+        help="The base name of the output folder",
+    )
+    parser.add_argument(
+        "-g",
+        "--gmsh",
+        type=str.strip,
+        default="gmsh",
+        help="The full path to the gmsh executable or simple Gmsh if it runs from the "
+        "terminal",
+    )
+    return parser.parse_args(argv)
+
+
+def check_cmdargs(cmdargs: argparse.Namespace) -> None:
+    """Validate command-line arguments and incompatible operations.
+
+    The checks cover required paths, filename extensions, mode-dependent
+    arguments, and availability of Gmsh for workflows that generate a mesh.
+
+    Parameters
+    ----------
+    cmdargs
+        Parsed arguments returned by the command-line parser.
+
+    Raises
+    ------
+    SystemExit
+        If an argument is invalid or an incompatible combination is requested.
+    """
+
+    def fail(message: str) -> None:
+        print(message)
+        raise SystemExit(1)
+
+    image = cmdargs.image
+    parameters = cmdargs.parameters
+    output = cmdargs.output
+    gmsh = cmdargs.gmsh
+    mode = cmdargs.mode
+    workflow = cmdargs.type
+
+    if not parameters:
+        fail("Invalid value for '-p', the parameter file cannot be empty.")
+
+    parameter_path = Path(parameters)
+    if parameter_path.suffix.lower() != ".toml":
+        fail(
+            f"Invalid extension for parameter file '-p {parameters}', "
+            "the expected extension is .toml."
+        )
+
+    if not parameter_path.is_file():
+        fail(
+            f"The parameter file '-p {parameters}' does not exist or is not "
+            "a regular file."
+        )
+
+    if not output:
+        fail("Invalid value for '-o', the output folder cannot be empty.")
+
+    output_path = Path(output)
+    if output_path.exists() and not output_path.is_dir():
+        fail(
+            f"Invalid value '-o {output}', the output path exists and is not "
+            "a directory."
+        )
+
+    if mode == "image":
+        if not image:
+            fail("Invalid value for '-i', an image file is required with '-m image'.")
+
+        image_path = Path(image)
+        if image_path.suffix.lower() != ".png":
+            fail(
+                f"Invalid extension for image file '-i {image}', the expected "
+                "extension is .png."
+            )
+
+        if not image_path.is_file():
+            fail(
+                f"The image file '-i {image}' does not exist or is not a "
+                "regular file."
+            )
+
+    mesh_workflows = {
+        "mesh",
+        "mesh_flow",
+        "all",
+    }
+    if workflow in mesh_workflows:
+        if not gmsh:
+            fail(
+                f"Invalid value for '-g', a Gmsh command is required for "
+                f"'-t {workflow}'."
+            )
+
+        try:
+            gmsh_arguments = shlex.split(gmsh)
+        except ValueError:
+            gmsh_arguments = []
+
+        if not gmsh_arguments:
+            fail(f"Invalid Gmsh command '-g {gmsh}'.")
+
+        try:
+            gmsh_result = subprocess.run(
+                [*gmsh_arguments, "-version"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+        except OSError:
+            gmsh_result = None
+
+        if gmsh_result is None or gmsh_result.returncode != 0:
+            fail(f"The Gmsh executable '-g {gmsh}' is not available or not " "working.")
 
 
 def process_image(

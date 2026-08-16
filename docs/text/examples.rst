@@ -40,7 +40,7 @@ executable:
 
 .. code-block:: bash
 
-    pymm -t all -m device
+    pymm -i microsystem.png -p parameters.toml -t all -m device
 
 The execution time was ca. 35 minutes and the following are screenshots of the simulation results:
 
@@ -49,6 +49,14 @@ The execution time was ca. 35 minutes and the following are screenshots of the s
 .. figure:: figs/device_tracer.png
 
     Simulation results of the (top) pressure, (middle) velocity, and (bottom) tracer concentration.
+
+.. tip::
+
+    The previous two examples (image and device) can be executed from the main pymm folder as (`docs_all.sh <https://github.com/cssr-tools/pymm/blob/main/tests/scripts/docs_all.sh>`_):
+
+    .. code-block:: bash
+
+        . ./tests/scripts/docs_all.sh
 
 ======
 Online 

@@ -3,17 +3,17 @@
 
 """Test the device mode functionality"""
 
-import subprocess
 from pathlib import Path
+
+from pymm.core.pymm import main
 
 
 def test_device(tmp_path, monkeypatch):
     """See configs/whiteish_grains.toml"""
     repo_root = Path(__file__).parents[1]
     monkeypatch.chdir(tmp_path)
-    subprocess.run(
+    main(
         [
-            "pymm",
             "-i",
             f"{repo_root}/tests/configs/whiteish_grains.png",
             "-p",
@@ -26,8 +26,7 @@ def test_device(tmp_path, monkeypatch):
             "device",
             "-o",
             ".",
-        ],
-        check=True,
+        ]
     )
     mesh = tmp_path / "mesh.msh"
     assert (mesh).is_file()
@@ -42,9 +41,8 @@ def test_device(tmp_path, monkeypatch):
     assert num_lines > 2220000
     assert num_nodes > 500000
     assert num_elements > 1600000
-    subprocess.run(
+    main(
         [
-            "pymm",
             "-i",
             f"{repo_root}/tests/configs/whiteish_grains.png",
             "-p",
@@ -57,8 +55,7 @@ def test_device(tmp_path, monkeypatch):
             "device",
             "-o",
             ".",
-        ],
-        check=True,
+        ]
     )
     last_vtk = tmp_path / "VTK_tracerTransport" / "tracerTransport_5.vtk"
     assert last_vtk.is_file()

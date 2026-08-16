@@ -17,7 +17,7 @@ def test_image(tmp_path, monkeypatch):
     shutil.copy(input_config, tmp_path / "parameters.toml")
     input_image = repo_root / "tests" / "configs" / "microsystem.png"
     shutil.copy(input_image, tmp_path / "microsystem.png")
-    main()
+    main([])
     mesh = tmp_path / "output" / "mesh.msh"
     assert (mesh).is_file()
 
