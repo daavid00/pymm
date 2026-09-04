@@ -1,66 +1,54 @@
-=======
-Related
-=======
+Related projects
+================
 
-Below are some tools that might be of interest; check 'em out 🙂.
+.. grid:: 1 2 2 2
+   :gutter: 2
 
-**********
-pyopmspe11
-**********
+   .. grid-item-card:: pyopmspe11
+      :class-card: related-card
+      :img-top: figs/pyopmspe11.gif
+      :link: https://github.com/OPM/pyopmspe11
 
-.. image:: ./figs/pyopmspe11.gif
-    :scale: 50%
+      A Python framework using OPM Flow for the CSP SPE11 benchmark project.
 
-`A Python framework using OPM Flow for the CSP SPE11 benchmark project <https://github.com/OPM/pyopmspe11>`_.
+   .. grid-item-card:: pofff
+      :class-card: related-card
+      :img-top: figs/pofff.png
+      :link: https://github.com/cssr-tools/pofff
 
-*****
-pofff
-*****
+      Image-based history matching for the FluidFlower benchmark with OPM Flow.
 
-.. image:: ./figs/pofff.png
+   .. grid-item-card:: pycopm
+      :class-card: related-card
+      :img-top: figs/pycopm.png
+      :link: https://github.com/cssr-tools/pycopm
 
-`An image-based history-matching framework for the FluidFlower Benchmark using OPM Flow <https://github.com/cssr-tools/pofff>`_.
+      An open-source tool for tailoring OPM Flow geological models.
 
-******
-pycopm
-******
+   .. grid-item-card:: plopm
+      :class-card: related-card
+      :img-top: figs/plopm.png
+      :link: https://github.com/cssr-tools/plopm
 
-.. image:: ./figs/pycopm.png
-    :scale: 32%
+      Generate PNGs, GIFs, and VTK data from OPM Flow-type models.
 
-`An open-source tool to tailor OPM Flow geological models <https://github.com/cssr-tools/pycopm>`_.
+   .. grid-item-card:: pyopmnearwell
+      :class-card: related-card
+      :img-top: figs/pyopmnearwell.png
+      :link: https://github.com/cssr-tools/pyopmnearwell
 
-*****
-plopm
-*****
+      Simulate near-well dynamics using OPM Flow.
 
-.. image:: ./figs/plopm.png
+   .. grid-item-card:: expreccs
+      :class-card: related-card
+      :img-top: figs/expreccs.gif
+      :link: https://github.com/cssr-tools/expreccs
 
-`Quick generation of PNGs, GIFs, and VTKs from a OPM Flow type model <https://github.com/cssr-tools/plopm>`_.
+      Simulate regional and site reservoirs for CO2 storage with OPM Flow.
 
-*************
-pyopmnearwell
-*************
+   .. grid-item-card:: ad-micp
+      :class-card: related-card
+      :img-top: figs/ad-micp.gif
+      :link: https://github.com/daavid00/ad-micp
 
-.. image:: ./figs/pyopmnearwell.png
-    :scale: 60%
-
-`A Python framework to simulate near well dynamics using OPM Flow <https://github.com/cssr-tools/pyopmnearwell>`_.
-
-********
-expreccs
-********
-
-.. image:: ./figs/expreccs.gif
-    :scale: 50%
-
-`A Python framework using OPM Flow to simulate regional and site reservoirs for CO2 storage <https://github.com/cssr-tools/expreccs>`_.
-
-*******
-ad-micp
-*******
-
-.. image:: ./figs/ad-micp.gif
-    :scale: 40%
-
-`A module to study CO2 leakage remediation by microbially induced calcite precipitation (MICP) <https://github.com/daavid00/ad-micp>`_.
+      Study CO2-leakage remediation by microbially induced calcite precipitation.

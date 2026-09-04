@@ -1,35 +1,56 @@
-============
 Introduction
 ============
 
-.. image:: ./figs/pymm.gif
+.. image:: figs/pymm.gif
+   :alt: Animated overview of the pymm workflow
 
-This documentation describes the **pymm** tool hosted in `https://github.com/cssr-tools/pymm <https://github.com/cssr-tools/pymm>`_.
+**pymm** is an image-based framework for creating computational fluid-dynamics
+models of microsystems. It uses `scikit-image <https://scikit-image.org>`_ to
+segment images, `Gmsh <https://gmsh.info>`_ to generate meshes, and
+`OpenFOAM <https://openfoam.org>`_ to simulate water flow and tracer transport.
 
-Description
------------
+Main workflows
+--------------
 
-The **pymm** tool relies on Python packages (e.g., `skimage <https://scikit-image.org>`_) to generate the spatial domains for the simulations from
-the microsystem images, and `Gmsh <https://gmsh.info>`_ as a mesh generator. 
-The numerical simulations for the water flow and tracer are performed using 
-the `OpenFOAM <https://openfoam.org>`_ simulator. This framework could be applied to general images and 
-the current implementation could be ('easily') extended to consider further 
-geometry of devices and solvers in OpenFOAM.
+* Process an image and generate diagnostic segmentation figures.
+* Extract grain and external boundaries and generate a Gmsh mesh.
+* Run a steady incompressible-flow simulation.
+* Run a transient tracer-transport simulation from the flow field.
 
-Overview
+The current implementation supports general input images and two domain modes:
+``image`` follows the image extent, while ``device`` adds the implemented
+micromodel-device geometry. The templates can be extended for further devices
+and OpenFOAM solvers.
+
+Basic command
+-------------
+
+.. code-block:: console
+
+   pymm -i image.png -p parameters.toml -o output -m image -t all -g gmsh
+
+About the project
+-----------------
+
+pymm is an open-source project developed by NORCE Research AS. It is funded by
+the Center for Sustainable Subsurface Resources, project 331841, and NORCE
+Research AS, project 101070.
+
+Citation
 --------
 
-The current implementation supports the following executable with the argument options:
+If you use pymm in your research, please cite the archived software:
 
-.. code-block:: bash
+   Landa-Marbán, D. (2023). *pymm: An open-source image-based framework for CFD
+   in microsystems*. Zenodo. https://doi.org/10.5281/zenodo.8430988
 
-    pymm -i image.png -p parameters.toml -o output -m image -t all -g gmsh
+Where to continue
+-----------------
 
-where 
-
-- \-i, \-image: The base name of the image ('microsystem.png' by default).
-- \-p, \-parameters: The base name of the :doc:`configuration file <./configuration_file>` ('parameters.toml' by default).
-- \-m, \-mode: The configuration of the microsystem, currently only image and device supported ('image' by default).
-- \-t, \-type: Run the whole framework ('all'), only the generation of the PNG figures, with the segmentation to grains, voids, and boundary ('pngs'), the mesh files for Gmsh ('mesh'), keep the current mesh and only simulate the flow velocity field ('flow'), mesh and flow ('mesh_flow'), flow and tracer ('flow_tracer'), or only tracer simulations ('tracer') ('mesh' by default).
-- \-o, \-output: The base name of the :doc:`output folder <./output_folder>` ('output' by default).
-- \-g, \-gmsh: The full path to the Gmsh executable or simple 'gmsh' if it runs from the terminal ('gmsh' by default).
+* :doc:`installation` explains the Python, Gmsh, and OpenFOAM requirements.
+* :doc:`configuration_file` documents every maintained TOML parameter.
+* :doc:`tutorial` guides you through the complete workflow.
+* :doc:`examples` collects reproducible image and device cases.
+* :doc:`command-line` gives the parser-derived option and workflow reference.
+* :doc:`output_folder` explains generated images, cases, meshes, and VTK data.
+* :doc:`api` introduces the Python API and package layout.
