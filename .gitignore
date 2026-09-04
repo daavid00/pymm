@@ -135,9 +135,10 @@ dmypy.json
 .DS_Store
 
 # Extra folders
-vpymm
-cssr
-debugging
-developing
-playground
-test_outputs
+/lab
+/vpymm
+/cssr
+/debugging
+/developing
+/playground
+/test_outputs

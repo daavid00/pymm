@@ -1,10 +1,23 @@
 # SPDX-FileCopyrightText: 2022-2026 NORCE Research AS
 # SPDX-License-Identifier: GPL-3.0
-# pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917,E1102,E1123,C0103
+# pylint: disable=R0902,R0912,R0913,R0914,R0915,R0917,E1102,E1123,C0103,C0302
 
-"""Main script for pymm"""
+"""Command-line entry point and top-level workflow coordination for pymm.
+
+pymm supports four connected workflows for microsystem models:
+
+* Image processing segments grains, voids, and the external boundary.
+* Mesh generation creates Gmsh geometry and mesh files.
+* Flow simulation runs a steady incompressible OpenFOAM model.
+* Tracer simulation runs transient transport using the computed flow field.
+
+This module parses and validates command-line arguments and TOML parameters,
+processes images, extracts and tags boundaries, writes mesh input, dispatches the
+selected simulations, and reports generated files. It also provides the shared
+terminal helpers used for errors, progress messages, and successful results."""
 
 import argparse
+import os
 import shlex
 import shutil
 import subprocess
@@ -13,7 +26,7 @@ import tomllib
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -27,11 +40,77 @@ from skimage import io, measure
 from skimage.morphology import remove_small_objects
 
 ADD_BORDER = 50  # Add arbitrary border to extract the image boundaries
+ANSI_BOLD_RED = "1;31"
+ANSI_BOLD_YELLOW = "1;33"
+ANSI_BOLD_GREEN = "1;32"
+ANSI_BOLD_BLUE = "1;34"
+ANSI_BOLD_MAGENTA = "1;35"
+ANSI_YELLOW = "1;33"
+ANSI_GREEN = "1;32"
+ANSI_CYAN = "36"
+ANSI_RED = "31"
+ANSI_BLUE = "1;34"
 
 
 @dataclass(slots=True, frozen=True)
 class PymmConfig:
-    """Central configuration object for pymm from TOML inputs"""
+    """Store the shared pymm configuration loaded from TOML.
+
+    The top-level TOML values populate this frozen data class. The configuration is
+    validated by :func:`check_toml` and then shared by the image, mesh, flow, and
+    tracer workflows.
+
+    Attributes
+    ----------
+    length : float
+        Physical length used to scale the Gmsh geometry.
+    width : float
+        Physical width used to scale the Gmsh geometry.
+    thickness : float
+        Extrusion thickness used by the Gmsh template.
+    grainMeaning : int
+        Grain convention: ``0`` for light grains or ``1`` for dark grains.
+    threshold : float
+        Grayscale segmentation threshold in the closed interval ``[0, 1]``.
+    rescale : float
+        Positive image rescaling factor.
+    grainsSize : int
+        Maximum size, in pixels, of small grain objects to remove.
+    borderTol : float
+        Polygon-approximation tolerance for the external boundary.
+    grainsTol : float
+        Polygon-approximation tolerance for interior grains.
+    lineWidth : float
+        Line width used in the diagnostic figures.
+    channelWidth : float
+        Channel width passed to the Gmsh template.
+    meshSize : float
+        Target mesh size passed to the Gmsh template.
+    viscosity : float
+        Viscosity written to the OpenFOAM physical properties.
+    diffusion : float
+        Tracer diffusion value written to the OpenFOAM case.
+    inletLocation : str
+        Inlet side: ``left``, ``top``, ``right``, or ``bottom``.
+    inletValue : float
+        Inlet value written to the OpenFOAM pressure field.
+    tracerTime : float
+        End time for the tracer simulation.
+    tracerWrite : float
+        Output interval for the tracer simulation.
+    pressureConv : float
+        Pressure convergence tolerance for the flow solver.
+    velocityConv : float
+        Velocity convergence tolerance for the flow solver.
+    iterationsMax : int
+        Maximum number of steady-flow iterations.
+    tracerStep : float
+        Time step for the tracer simulation.
+
+    Notes
+    -----
+    Physical units are defined by the Gmsh and OpenFOAM templates and must be
+    consistent across the configuration."""
 
     length: float
     width: float
@@ -58,7 +137,25 @@ class PymmConfig:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Python for microsystems"""
+    """Run the pymm command-line workflow.
+
+    Parse and validate CLI arguments and TOML parameters, then dispatch the selected
+    image, mesh, flow, and tracer operations.
+
+    Parameters
+    ----------
+    argv : list[str] | None, optional
+        Arguments to parse instead of ``sys.argv[1:]``. This is primarily used by
+        tests and programmatic callers.
+
+    Raises
+    ------
+    SystemExit
+        If command-line or TOML validation fails.
+    tomllib.TOMLDecodeError
+        If the parameter file is not valid TOML.
+    subprocess.CalledProcessError
+        If an external command fails."""
     cmdargs = parse_args(argv)
     check_cmdargs(cmdargs)
     pat = Path(__file__).resolve().parent.parent
@@ -68,25 +165,27 @@ def main(argv: list[str] | None = None) -> None:
     kind = cmdargs.type
     image_path = cmdargs.image
     parameters_path = Path(cmdargs.parameters)
-    if not parameters_path.exists():
-        print(f"The file {cmdargs.parameters} is not found.")
-        sys.exit()
-    if parameters_path.suffix == ".txt":
-        print("toml is used now for the parameter file; please update the file.")
-        sys.exit()
     with open(parameters_path, "rb") as f:
         toml = tomllib.load(f)
     cfg = PymmConfig(**toml)
-    print("\nExecuting pymm, please wait.")
+    check_toml(cfg)
     if kind in {"all", "pngs", "mesh", "mesh_flow"}:
+        generated_files = [
+            "binary_image.png",
+            "extracted_border.png",
+            "interior_grains_border.png",
+            "interior_grains.png",
+        ]
+        pymm_info("Generating the files, please wait...")
         # Generate the image
         imH, imL, cn_grains, boundary = process_image(cfg, fol, mode, image_path)
         # Extract the coordinates of the image borders
         pl, pt, pr, pb, bb, bl, bt, br = extract_borders(boundary)
         if kind in {"all", "mesh", "mesh_flow"}:
             if cfg.inletLocation.lower() not in {"left", "top", "right", "bottom"}:
-                print(f"Invalid inletLocation {cfg.inletLocation}.")
-                sys.exit()
+                pymm_error(
+                    f"Invalid inletLocation {cli_error_value(cfg.inletLocation)}."
+                )
             bdnL: list[int] = []
             bdnT: list[int] = []
             bdnR: list[int] = []
@@ -120,26 +219,51 @@ def main(argv: list[str] | None = None) -> None:
                 bdnB,
                 wall,
             )
+            generated_files += ["mesh.geo", "mesh.msh"]
+        pymm_success("", str(fol), generated_files)
     if kind in {"all", "mesh_flow", "flow", "flow_tracer"}:
         # Set up of the files for the Flow simulations and run them
+        pymm_info("Processing the flow simulations, please wait...")
         if not (fol / "mesh.msh").exists():
-            print("Run first either -t all or -t mesh.")
-            sys.exit()
+            pymm_error(
+                f"Run first either {cli_correct_value('-t all')} or {cli_correct_value('-t mesh')}."
+            )
         run_stokes(cfg, fol, pat)
+        pymm_success(
+            f"Results written to {fol}/OpenFOAM/flowStokes/ and\n               "
+            f"{fol}/VTK_flowSTokes/",
+            "",
+            [],
+        )
     if kind in {"all", "flow_tracer", "tracer"}:
+        pymm_info("Processing the tracer simulations, please wait...")
         if not (fol / "OpenFOAM" / "flowStokes").exists():
-            print("Run first either -t all or -t mesh_flow.")
-            sys.exit()
+            pymm_error(
+                f"Run first either {cli_correct_value('-t all')} or "
+                f"{cli_correct_value('-t mesh_flow')}."
+            )
         # Set up of the files for the Tracer simulations and run them
         run_tracer(cfg, fol, pat)
-    print(
-        "\nThe execution of pymm succeeded. "
-        + f"The generated files have been written to {fol}\n"
-    )
+        pymm_success(
+            f"Results written to {fol}/OpenFOAM/tracerTransport/ and\n               "
+            f"{fol}/VTK_tracerTransport/",
+            "",
+            [],
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Define and parse command-line arguments."""
+    """Create the CLI parser and parse pymm arguments.
+
+    Parameters
+    ----------
+    argv : list[str] | None, optional
+        Arguments to parse instead of ``sys.argv[1:]``.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command-line arguments."""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description="Main script to run the workflow on a microsystem configuration.",
@@ -197,26 +321,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def check_cmdargs(cmdargs: argparse.Namespace) -> None:
-    """Validate command-line arguments and incompatible operations.
+    """Validate command-line values and incompatible operations.
 
-    The checks cover required paths, filename extensions, mode-dependent
-    arguments, and availability of Gmsh for workflows that generate a mesh.
+    Validation covers required paths, file extensions, mode-dependent image input,
+    and Gmsh availability for workflows that generate a mesh.
 
     Parameters
     ----------
-    cmdargs
-        Parsed arguments returned by the command-line parser.
+    cmdargs : argparse.Namespace
+        Parsed command-line arguments.
 
     Raises
     ------
     SystemExit
-        If an argument is invalid or an incompatible combination is requested.
-    """
-
-    def fail(message: str) -> None:
-        print(message)
-        raise SystemExit(1)
-
+        If an input value is invalid or a required executable is unavailable."""
     image = cmdargs.image
     parameters = cmdargs.parameters
     output = cmdargs.output
@@ -225,45 +343,52 @@ def check_cmdargs(cmdargs: argparse.Namespace) -> None:
     workflow = cmdargs.type
 
     if not parameters:
-        fail("Invalid value for '-p', the parameter file cannot be empty.")
+        pymm_error(
+            f"Invalid value for {cli_error_value('-p')}, the parameter file cannot be empty."
+        )
 
     parameter_path = Path(parameters)
     if parameter_path.suffix.lower() != ".toml":
-        fail(
-            f"Invalid extension for parameter file '-p {parameters}', "
-            "the expected extension is .toml."
+        pymm_error(
+            f"Invalid extension for parameter file {cli_error_value(f'-p {parameters}')}, "
+            f"the expected extension is {cli_correct_value('.toml')}."
         )
 
     if not parameter_path.is_file():
-        fail(
-            f"The parameter file '-p {parameters}' does not exist or is not "
+        pymm_error(
+            f"The parameter file {cli_error_value(f'-p {parameters}')} does not exist or is not "
             "a regular file."
         )
 
     if not output:
-        fail("Invalid value for '-o', the output folder cannot be empty.")
+        pymm_error(
+            f"Invalid value for {cli_error_value('-o')}, the output folder cannot be empty."
+        )
 
     output_path = Path(output)
     if output_path.exists() and not output_path.is_dir():
-        fail(
-            f"Invalid value '-o {output}', the output path exists and is not "
+        pymm_error(
+            f"Invalid value {cli_error_value(f'-o {output}')}, the output path exists and is not "
             "a directory."
         )
 
     if mode == "image":
         if not image:
-            fail("Invalid value for '-i', an image file is required with '-m image'.")
+            pymm_error(
+                f"Invalid value for {cli_error_value('-i')}, an image file is required with "
+                f"{cli_correct_value('-m image')}."
+            )
 
         image_path = Path(image)
         if image_path.suffix.lower() != ".png":
-            fail(
-                f"Invalid extension for image file '-i {image}', the expected "
-                "extension is .png."
+            pymm_error(
+                f"Invalid extension for image file {cli_error_value(f'-i {image}')}, the expected "
+                f"extension is {cli_correct_value('.png')}."
             )
 
         if not image_path.is_file():
-            fail(
-                f"The image file '-i {image}' does not exist or is not a "
+            pymm_error(
+                f"The image file {cli_error_value(f'-i {image}')} does not exist or is not a "
                 "regular file."
             )
 
@@ -274,9 +399,9 @@ def check_cmdargs(cmdargs: argparse.Namespace) -> None:
     }
     if workflow in mesh_workflows:
         if not gmsh:
-            fail(
-                f"Invalid value for '-g', a Gmsh command is required for "
-                f"'-t {workflow}'."
+            pymm_error(
+                f"Invalid value for {cli_error_value('-g')}, a Gmsh command is required for "
+                f"{cli_correct_value('-t {workflow}')}."
             )
 
         try:
@@ -285,7 +410,7 @@ def check_cmdargs(cmdargs: argparse.Namespace) -> None:
             gmsh_arguments = []
 
         if not gmsh_arguments:
-            fail(f"Invalid Gmsh command '-g {gmsh}'.")
+            pymm_error(f"Invalid Gmsh command {cli_error_value(f'-g {gmsh}')}.")
 
         try:
             gmsh_result = subprocess.run(
@@ -298,13 +423,114 @@ def check_cmdargs(cmdargs: argparse.Namespace) -> None:
             gmsh_result = None
 
         if gmsh_result is None or gmsh_result.returncode != 0:
-            fail(f"The Gmsh executable '-g {gmsh}' is not available or not " "working.")
+            pymm_error(
+                f"The Gmsh executable {cli_error_value(f'-g {gmsh}')} is not available or not "
+                "working."
+            )
+
+
+def check_toml(cfg: PymmConfig) -> None:
+    """Validate the TOML configuration values.
+
+    Parameters
+    ----------
+    cfg : PymmConfig
+        Shared runtime configuration.
+
+    Raises
+    ------
+    SystemExit
+        If a value has an invalid type, range, or accepted value."""
+    positive_values = {
+        "length": cfg.length,
+        "width": cfg.width,
+        "thickness": cfg.thickness,
+        "rescale": cfg.rescale,
+        "lineWidth": cfg.lineWidth,
+        "channelWidth": cfg.channelWidth,
+        "meshSize": cfg.meshSize,
+        "viscosity": cfg.viscosity,
+        "diffusion": cfg.diffusion,
+        "tracerTime": cfg.tracerTime,
+        "tracerWrite": cfg.tracerWrite,
+        "pressureConv": cfg.pressureConv,
+        "velocityConv": cfg.velocityConv,
+        "iterationsMax": cfg.iterationsMax,
+        "tracerStep": cfg.tracerStep,
+    }
+    for name, value in positive_values.items():
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+            pymm_error(
+                f"The configured value for {name} must be a positive number, but "
+                f"{value!r} was provided."
+            )
+    nonnegative_values = {
+        "grainsSize": cfg.grainsSize,
+        "borderTol": cfg.borderTol,
+        "grainsTol": cfg.grainsTol,
+        "inletValue": cfg.inletValue,
+    }
+    for name, value in nonnegative_values.items():
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+            pymm_error(
+                f"The configured value for {name} must be a nonnegative number, but "
+                f"{value!r} was provided."
+            )
+    if cfg.grainMeaning not in [0, 1] or isinstance(cfg.grainMeaning, bool):
+        pymm_error(
+            "The configured value for grainMeaning must be either 0 for light grains "
+            f"or 1 for dark grains, but {cfg.grainMeaning!r} was provided."
+        )
+    if (
+        not isinstance(cfg.threshold, (int, float))
+        or isinstance(cfg.threshold, bool)
+        or not 0 <= cfg.threshold <= 1
+    ):
+        pymm_error(
+            "The configured value for threshold must be between 0 and 1, but "
+            f"{cfg.threshold!r} was provided."
+        )
+    valid_inlet_locations = ["left", "top", "right", "bottom"]
+    if cfg.inletLocation not in valid_inlet_locations:
+        pymm_error(
+            "The configured value for inletLocation must be one of "
+            f"{valid_inlet_locations}, but {cfg.inletLocation!r} was provided."
+        )
+    integer_values = {
+        "grainsSize": cfg.grainsSize,
+        "iterationsMax": cfg.iterationsMax,
+    }
+    for name, value in integer_values.items():
+        if not isinstance(value, int) or isinstance(value, bool):
+            pymm_error(
+                f"The configured value for {name} must be an integer, but "
+                f"{value!r} was provided."
+            )
 
 
 def process_image(
     cfg: PymmConfig, fol: Path, mode: str, in_image: str
 ) -> tuple[int, int, list[NDArray[np.float64]], NDArray[np.float64]]:
-    """Function to process the input image"""
+    """Segment the input image and extract its contours.
+
+    Write diagnostic PNG files and return the rescaled dimensions, interior-grain
+    contours, and external boundary.
+
+    Parameters
+    ----------
+    cfg : PymmConfig
+        Shared runtime configuration.
+    fol : pathlib.Path
+        Output directory for generated figures.
+    mode : str
+        Microsystem setup, ``image`` or ``device``.
+    in_image : str
+        Path to the input PNG image.
+
+    Returns
+    -------
+    tuple[int, int, list[numpy.ndarray], numpy.ndarray]
+        Image height, image width, grain contours, and external boundary."""
     # Read the image
     im0 = np.array(io.imread(in_image, as_gray=True))
     # Convert the image to binary (black and white) and rescale
@@ -358,7 +584,27 @@ def make_figures(
     cn_grains: list[NDArray[np.float64]],
     cn_border: list[NDArray[np.float64]],
 ) -> NDArray[np.float64]:
-    """Function to make figures with the extract grains and contours"""
+    """Create diagnostic figures for the grains and external boundary.
+
+    Parameters
+    ----------
+    cfg : PymmConfig
+        Shared runtime configuration.
+    fol : pathlib.Path
+        Output directory for generated figures.
+    im : numpy.ndarray
+        Padded binary image.
+    border : numpy.ndarray
+        Boolean mask containing the external border.
+    cn_grains : list[numpy.ndarray]
+        Interior-grain contours in ``(row, column)`` order.
+    cn_border : list[numpy.ndarray]
+        Candidate external-boundary contours.
+
+    Returns
+    -------
+    numpy.ndarray
+        Selected external boundary in reversed point order."""
     slices = slice(ADD_BORDER, -ADD_BORDER)
     image_slice = (slices, slices)
     fig, axis = plt.subplots()
@@ -419,7 +665,18 @@ def extract_borders(
     float,
     float,
 ]:
-    """Function to extract the borders of the image"""
+    """Split the external contour into four image boundaries.
+
+    Parameters
+    ----------
+    boundary : numpy.ndarray
+        Closed contour in padded-image coordinates.
+
+    Returns
+    -------
+    tuple
+        Left, top, right, and bottom point arrays followed by the four reference
+        coordinates used for boundary tagging."""
     shifted = boundary - ADD_BORDER
     aa, dd, cc = 0, 0, 0
     pl_list: list[list[float]] = []
@@ -457,10 +714,18 @@ def extract_borders(
 def pad_with(
     vector: NDArray[np.float64], pad_width: tuple[int, int], _iaxis: int, kwargs: dict
 ) -> None:
-    """
-    Function to add extra border to later extract the image boundaries
-    see https://numpy.org/doc/stable/reference/generated/numpy.pad.html
-    """
+    """Fill NumPy padding regions with a constant value.
+
+    Parameters
+    ----------
+    vector : numpy.ndarray
+        One-dimensional array view modified in place.
+    pad_width : tuple[int, int]
+        Number of values padded before and after the original array.
+    _iaxis : int
+        Axis supplied by :func:`numpy.pad`; unused.
+    kwargs : dict
+        Callback options. ``padder`` selects the fill value."""
     pad_value = kwargs.get("padder", 10)
     vector[: pad_width[0]] = pad_value
     vector[-pad_width[1] :] = pad_value
@@ -475,7 +740,29 @@ def _assign_boundary(
     target: list[int],
     wall: list[int],
 ) -> int:
-    """Assign the boundary tags"""
+    """Assign contour segments to an opening or wall.
+
+    Parameters
+    ----------
+    point : numpy.ndarray
+        Closed boundary-point array.
+    start_index : int
+        First segment index to inspect.
+    number_of_segments : int
+        Number of consecutive segments to classify.
+    reference_value : float
+        Coordinate of the target image edge.
+    coordinate_index : int
+        Coordinate column used for comparison.
+    target : list[int]
+        Target-boundary indices updated in place.
+    wall : list[int]
+        Wall-boundary indices updated in place.
+
+    Returns
+    -------
+    int
+        First segment index after the processed range."""
     shifted_reference = reference_value - ADD_BORDER
     indices = np.arange(start_index, start_index + number_of_segments)
     values0 = point[indices, coordinate_index]
@@ -496,7 +783,27 @@ def boundary_tags_left_top(
     bt: float,
     wall: list[int],
 ) -> tuple[list[int], list[int], int]:
-    """Assign the boundary left-top tags"""
+    """Assign boundary tags for the left and top edges.
+
+    Parameters
+    ----------
+    point : numpy.ndarray
+        Closed boundary-point array.
+    pl : numpy.ndarray
+        Left-boundary points.
+    pt : numpy.ndarray
+        Top-boundary points.
+    bl : float
+        Left reference coordinate.
+    bt : float
+        Top reference coordinate.
+    wall : list[int]
+        Wall indices updated in place.
+
+    Returns
+    -------
+    tuple[list[int], list[int], int]
+        Left tags, top tags, and the first unprocessed segment index."""
     bdnL: list[int] = []
     bdnT: list[int] = []
     index: int = 0
@@ -514,7 +821,29 @@ def boundary_tags_right_bottom(
     br: float,
     wall: list[int],
 ) -> tuple[list[int], list[int]]:
-    "Assign the boundary right-bottom tags"
+    """Assign boundary tags for the right and bottom edges.
+
+    Parameters
+    ----------
+    point : numpy.ndarray
+        Closed boundary-point array.
+    start_index : int
+        First segment index to inspect.
+    pr : numpy.ndarray
+        Right-boundary points.
+    pb : numpy.ndarray
+        Bottom-boundary points.
+    bb : float
+        Bottom reference coordinate.
+    br : float
+        Right reference coordinate.
+    wall : list[int]
+        Wall indices updated in place.
+
+    Returns
+    -------
+    tuple[list[int], list[int]]
+        Right and bottom boundary tags."""
     bdnR: list[int] = []
     bdnB: list[int] = []
     index: int = start_index
@@ -545,7 +874,40 @@ def write_geo(
     bdnB: list[int],
     wall: list[int],
 ) -> None:
-    """Function to write the Gmsh .geo file"""
+    """Write the Gmsh geometry file and generate the mesh.
+
+    Convert image contours to Gmsh points and physical boundaries, render the
+    mode-specific Mako template, and execute Gmsh.
+
+    Parameters
+    ----------
+    cfg : PymmConfig
+        Shared runtime configuration.
+    fol : pathlib.Path
+        Output directory.
+    pat : pathlib.Path
+        Project root containing the templates.
+    mode : str
+        Microsystem setup, ``image`` or ``device``.
+    gmsh : str
+        Gmsh executable or command.
+    imH : int
+        Rescaled image height in pixels.
+    imL : int
+        Rescaled image width in pixels.
+    cn_grains : list[numpy.ndarray]
+        Interior-grain contours.
+    pl, pt, pr, pb : numpy.ndarray
+        Left, top, right, and bottom boundary points.
+    bdnL, bdnT, bdnR, bdnB : list[int]
+        Segment indices for the physical boundaries.
+    wall : list[int]
+        Segment indices for wall boundaries.
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If Gmsh exits with a nonzero status."""
     mapping = {
         "left": ("L", "R"),
         "top": ("T", "B"),
@@ -676,11 +1038,21 @@ def write_geo(
 
     with open(geo_path, "w", encoding="utf8") as file:
         file.write(filledtemplate)
+    pymm_info("Executing Gmsh")
     subprocess.run([gmsh, str(geo_path), "-3"], check=True)
 
 
 def copy_and_replace(src: Path, dst: Path, replacements: dict[str, Any]) -> None:
-    """Function to edit the OpenFOAM files"""
+    """Copy a text template and replace its placeholders.
+
+    Parameters
+    ----------
+    src : pathlib.Path
+        Source template file.
+    dst : pathlib.Path
+        Destination file.
+    replacements : dict[str, Any]
+        Literal placeholders and replacement values."""
     text = src.read_text(encoding="utf8")
     for key, value in replacements.items():
         text = text.replace(key, str(value))
@@ -688,7 +1060,26 @@ def copy_and_replace(src: Path, dst: Path, replacements: dict[str, Any]) -> None
 
 
 def run_stokes(cfg: PymmConfig, fol: Path, pat: Path) -> None:
-    """Function to write the openFOAM files to run the Navier-Stokes flow simulations"""
+    """Write and run the steady incompressible-flow case.
+
+    Create the OpenFOAM case, convert the Gmsh mesh, run the flow solver, export VTK
+    results, and copy them to the pymm output directory.
+
+    Parameters
+    ----------
+    cfg : PymmConfig
+        Shared runtime configuration.
+    fol : pathlib.Path
+        Output directory containing ``mesh.msh``.
+    pat : pathlib.Path
+        Project root containing the OpenFOAM templates.
+
+    Raises
+    ------
+    SystemExit
+        If ``gmshToFoam`` is unavailable.
+    subprocess.CalledProcessError
+        If an OpenFOAM command fails."""
     template_base = f"{pat}/templates/OpenFOAM/flowStokes"
     flow_path = fol / "OpenFOAM/flowStokes"
     vtk_target = fol / "VTK_flowStokes"
@@ -747,6 +1138,12 @@ def run_stokes(cfg: PymmConfig, fol: Path, pat: Path) -> None:
 
     shutil.copy2(fol / "mesh.msh", flow_path)
 
+    pymm_info("Executing gmshToFoam")
+    if shutil.which("gmshToFoam") is None:
+        pymm_error(
+            f"executable {cli_error_value('gmshToFoam')} was not found in PATH; "
+            "load or install OpenFOAM before running the flow workflow."
+        )
     subprocess.run(["gmshToFoam", "mesh.msh"], cwd=flow_path, check=True)
 
     boundary_path = flow_path / "constant/polyMesh/boundary"
@@ -755,9 +1152,11 @@ def run_stokes(cfg: PymmConfig, fol: Path, pat: Path) -> None:
     boundary_path.write_text("\n".join(lines) + "\n", encoding="utf8")
 
     # Running the steady-state flow simulation
+    pymm_info("Executing foamRun")
     subprocess.run(
         ["foamRun", "-solver", "incompressibleFluid"], cwd=flow_path, check=True
     )
+    pymm_info("Executing foamToVTK")
     subprocess.run(["foamToVTK"], cwd=flow_path, check=True)
 
     vtk_source = flow_path / "VTK"
@@ -770,7 +1169,26 @@ def run_stokes(cfg: PymmConfig, fol: Path, pat: Path) -> None:
 
 
 def run_tracer(cfg: PymmConfig, fol: Path, pat: Path) -> None:
-    """Function to write the openFOAM files to run the Tracer flow simulations"""
+    """Write and run the transient tracer-transport case.
+
+    Create the OpenFOAM case, copy the latest flow fields and mesh, run the tracer
+    solver, export VTK results, and copy them to the pymm output directory.
+
+    Parameters
+    ----------
+    cfg : PymmConfig
+        Shared runtime configuration.
+    fol : pathlib.Path
+        Output directory containing a completed flow case.
+    pat : pathlib.Path
+        Project root containing the OpenFOAM templates.
+
+    Raises
+    ------
+    SystemExit
+        If ``topoSet`` is unavailable.
+    subprocess.CalledProcessError
+        If an OpenFOAM command fails."""
     template_base = f"{pat}/templates/OpenFOAM/tracerTransport"
     tracer_path = fol / "OpenFOAM/tracerTransport"
     flow_stokes_path = fol / "OpenFOAM/flowStokes"
@@ -825,10 +1243,18 @@ def run_tracer(cfg: PymmConfig, fol: Path, pat: Path) -> None:
         tracer_path / "constant/polyMesh",
         dirs_exist_ok=True,
     )
+    pymm_info("Executing topoSet")
+    if shutil.which("topoSet") is None:
+        pymm_error(
+            f"executable {cli_error_value('topoSet')} was not found in PATH; "
+            "load or install OpenFOAM before running the tracer workflow."
+        )
     subprocess.run(["topoSet"], cwd=tracer_path, check=True)
 
     # Running the simulation of tracer transport
+    pymm_info("Executing foamRun")
     subprocess.run(["foamRun"], cwd=tracer_path, check=True)
+    pymm_info("Executing foamToVTK")
     subprocess.run(["foamToVTK"], cwd=tracer_path, check=True)
     vtk_source = tracer_path / "VTK"
     for item in vtk_source.iterdir():
@@ -838,6 +1264,172 @@ def run_tracer(cfg: PymmConfig, fol: Path, pat: Path) -> None:
         else:
             shutil.copy(item, target)
 
+
+def _supports_color(stream: object = sys.stderr) -> bool:
+    """Check whether an output stream supports ANSI colors.
+
+    Parameters
+    ----------
+    stream : object, optional
+        Output stream to inspect.
+
+    Returns
+    -------
+    bool
+        Whether ANSI color output is enabled."""
+    return (
+        hasattr(stream, "isatty")
+        and stream.isatty()
+        and os.environ.get("NO_COLOR") is None
+        and os.environ.get("TERM") != "dumb"
+    )
+
+
+def _colorize(
+    text: str,
+    code: str,
+    stream: object = sys.stderr,
+) -> str:
+    """Wrap text in an ANSI color sequence when supported.
+
+    Parameters
+    ----------
+    text : str
+        Text to format.
+    code : str
+        ANSI color code.
+    stream : object, optional
+        Output stream used to determine color support.
+
+    Returns
+    -------
+    str
+        Colored or unchanged text."""
+    if not _supports_color(stream):
+        return text
+    return f"\033[{code}m{text}\033[0m"
+
+
+def cli_error_value(value: str) -> str:
+    """Format an invalid CLI option or value.
+
+    Parameters
+    ----------
+    value : str
+        Option or value to format.
+
+    Returns
+    -------
+    str
+        Quoted value, colored red when supported."""
+    return _colorize(repr(value), ANSI_RED)
+
+
+def pymm_error(message: str) -> NoReturn:
+    """Raise a fatal pymm command-line error.
+
+    Parameters
+    ----------
+    message : str
+        Error message to display.
+
+    Raises
+    ------
+    SystemExit
+        Always raised with the formatted error message."""
+    label = _colorize("error", ANSI_BOLD_RED)
+    raise SystemExit(f"{pymm_name()}: {label}: {message}")
+
+
+def pymm_info(message: str) -> None:
+    """Display an informational pymm message.
+
+    Parameters
+    ----------
+    message : str
+        Progress or workflow message."""
+    label = _colorize("info", ANSI_BOLD_BLUE, sys.stdout)
+    print(f"{pymm_name()}: {label}: {message}")
+
+
+def cli_info_value(value: str) -> str:
+    """Format an informational CLI option or value.
+
+    Parameters
+    ----------
+    value : str
+        Option or value to format.
+
+    Returns
+    -------
+    str
+        Quoted value, colored blue when supported."""
+    return _colorize(repr(value), ANSI_BLUE)
+
+
+def cli_correct_value(value: str) -> str:
+    """Format a valid CLI option or value.
+
+    Parameters
+    ----------
+    value : str
+        Accepted option, value, or example.
+
+    Returns
+    -------
+    str
+        Quoted value, colored green when supported."""
+    return _colorize(repr(value), ANSI_GREEN)
+
+
+def pymm_success(msg: str, output_dir: str, filenames: list[str]) -> None:
+    """Display generated output files and locations.
+
+    Parameters
+    ----------
+    msg : str
+        Optional success message.
+    output_dir : str
+        Directory containing the generated files.
+    filenames : list[str]
+        Generated filenames."""
+    label = _colorize("success", ANSI_BOLD_GREEN, sys.stdout)
+    if not filenames:
+        print(f"{pymm_name()}: {label}: {msg}{output_dir}")
+    elif len(filenames) == 1:
+        print(f"{pymm_name()}: {label}: {msg}{output_dir}/{filenames[0]}")
+    elif len(filenames) <= 5:
+        print(f"{pymm_name()}: {label}{msg}")
+        print(f"      Output directory: {output_dir}")
+        print(f"      Files ({len(filenames)}): {', '.join(filenames)}")
+    else:
+        print(f"{pymm_name()}: {label}{msg}")
+        print(f"      Output directory: {output_dir}")
+        print(f"      Files ({len(filenames)}):")
+        for filename in filenames:
+            print(f"        - {filename}")
+
+
+def pymm_name(stream: object = sys.stderr) -> str:
+    """Format the pymm program name.
+
+    Parameters
+    ----------
+    stream : object, optional
+        Output stream used to determine color support.
+
+    Returns
+    -------
+    str
+        Formatted program name."""
+    characters = [("pymm", "1")]
+    return "".join(
+        _colorize(character, color, stream) for character, color in characters
+    )
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
 
 # {
 # Copyright 2022-2026, NORCE Research AS, Computational
