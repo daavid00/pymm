@@ -26,6 +26,8 @@ html_logo = "figs/pymm_logo.png"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_show_sourcelink = True
+html_show_sphinx = False
+html_last_updated_fmt = "%Y-%m-%d"
 html_theme_options = {
     "navbar_start": ["navbar-logo"],
     "navbar_center": ["navbar-nav"],
